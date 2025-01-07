@@ -93,9 +93,120 @@ contract UniswapV3PoolTest is Test {
         );
     }
 
+    // TODO: 测试输入不足时的情况
+    function SwapInsufficientInputAmount() public {
+        // 添加流动性
+        TestCaseParams memory params = TestCaseParams({
+            wethBalance: 1 ether,
+            usdcBalance: 5000 ether,
+            currentTick: 85176,
+            lowerTick: 84222,
+            upperTick: 86129,
+            liquidity: 1517882343751509868544,
+            currentSqrtP: 5602277097478614198912276234240,
+            shouldTransferInCallback: true,
+            mintLiquidity: true
+        });
+
+        (uint256 poolBalance0, uint256 poolBalance1) = setUpTestCase(params);
+
+        token1.mint(address(this), 40 ether);
+        // 授权pool
+        token1.approve(address(pool), 40 ether);
+        UniswapV3Pool.CallbackData memory data = UniswapV3Pool.CallbackData({
+            token0: address(token0),
+            token1: address(token1),
+            payer: address(this)
+        });
+        vm.expectRevert(UniswapV3Pool.InsufficientInputAmount.selector);
+        pool.swap(address(this), abi.encode(data));
+    }
+
+    function testSwapBuyETH() public {
+        // 添加流动性
+        TestCaseParams memory params = TestCaseParams({
+            wethBalance: 1 ether,
+            usdcBalance: 5000 ether,
+            currentTick: 85176,
+            lowerTick: 84222,
+            upperTick: 86129,
+            liquidity: 1517882343751509868544,
+            currentSqrtP: 5602277097478614198912276234240,
+            shouldTransferInCallback: true,
+            mintLiquidity: true
+        });
+
+        (uint256 poolBalance0, uint256 poolBalance1) = setUpTestCase(params);
+
+        // usdc => ETH
+        token1.mint(address(this), 42 ether);
+        token1.approve(address(this), 42 ether);
+        UniswapV3Pool.CallbackData memory data = UniswapV3Pool.CallbackData({
+            token0: address(token0),
+            token1: address(token1),
+            payer: address(this)
+        });
+        // 转为int256与amount0Delta进行运算
+        int256 balance0 = int256(token0.balanceOf(address(this)));
+        uint256 balance1 = token1.balanceOf(address(this));
+        // 执行交换
+        // 转入 42 usdc,收到 ETH
+        (int256 amount0Delta, int256 amount1Delta) = pool.swap(
+            address(this),
+            abi.encode(data)
+        );
+        console.log(uint256(amount0Delta));
+        assertEq(amount0Delta, -0.008396714242162444 ether, "invalid ETH out");
+        assertEq(amount1Delta, 42 ether, "invalid USDC in");
+        // FIXME:错误的写法 ✅
+        // 在solidity中将一个负数强制转为uint256时,solidity会直接将其二进制补码解释为一个无符号整数
+        // 例如：-1 的二进制补码是全 1，转为uint256后会变成2^256-1
+        // 所以，将负数-0.008396714242162444 ether,转为uint256会得到下面这个非常大的数,实际上是2^256 - 0.008396714242162444 ether 的结果
+        // 115792089237316195423570985008687907853269984665640564039457584007913129639935
+        /*
+             assertEq(
+               uint256(balance0) + uint256(amount0Delta),
+               token0.balanceOf(address(this)),
+               "invalid token0 balance"
+              );
+         
+         */
+        // 验证sender
+        assertEq(
+            uint256(balance0 - amount0Delta),
+            token0.balanceOf(address(this)),
+            "invalid token0 balance"
+        );
+        assertEq(0, token1.balanceOf(address(this)), "invalid token1 balance");
+
+        // 验证Pool
+        assertEq(
+            uint256(int256(poolBalance0) + amount0Delta),
+            token0.balanceOf(address(pool)),
+            "invalid pool balance0"
+        );
+        assertEq(
+            uint256(int256(poolBalance1) + amount1Delta),
+            token1.balanceOf(address(pool)),
+            "invalid pool balance1"
+        );
+
+        // 验证tick,与价格
+        (uint160 sqrtPriceX96, int24 tick) = pool.slot0();
+        assertEq(
+            sqrtPriceX96,
+            5604469350942327889444743441197,
+            "invalid current sqrtPriceX96"
+        );
+        assertEq(pool.liquidity(), params.liquidity);
+    }
+
     function setUpTestCase(
         TestCaseParams memory params
     ) internal returns (uint256 poolBalance0, uint256 poolBalance1) {
+        // 授权给自己,因为uniswapV3MintCallback方法
+        token0.approve(address(this), 1 ether);
+        token1.approve(address(this), 5000 ether);
         pool = new UniswapV3Pool(
             address(token0),
             address(token1),
@@ -104,21 +215,55 @@ contract UniswapV3PoolTest is Test {
         );
 
         shouldTransferInCallback = params.shouldTransferInCallback;
-
+        UniswapV3Pool.CallbackData memory data = UniswapV3Pool.CallbackData({
+            token0: address(token0),
+            token1: address(token1),
+            payer: address(this)
+        });
         if (params.mintLiquidity) {
             (poolBalance0, poolBalance1) = pool.mint(
                 address(this),
                 params.lowerTick,
                 params.upperTick,
-                params.liquidity
+                params.liquidity,
+                abi.encode(data)
             );
         }
     }
 
-    function uniswapV3MintCallback(uint256 amount0, uint256 amount1) public {
+    function uniswapV3SwapCallback(
+        int256 amount0,
+        int256 amount1,
+        bytes calldata data
+    ) public {
+        UniswapV3Pool.CallbackData memory extra = abi.decode(
+            data,
+            (UniswapV3Pool.CallbackData)
+        );
+        if (amount0 > 0) {
+            // token0.transfer(msg.sender, uint256(amount0));
+            token0.transferFrom(extra.payer, msg.sender, uint256(amount0));
+        }
+        if (amount1 > 0) {
+            // token1.transfer(msg.sender, uint256(amount1));
+            token1.transferFrom(extra.payer, msg.sender, uint256(amount1));
+        }
+    }
+
+    function uniswapV3MintCallback(
+        uint256 amount0,
+        uint256 amount1,
+        bytes calldata data
+    ) public {
         if (shouldTransferInCallback) {
-            token0.transfer(msg.sender, amount0);
-            token1.transfer(msg.sender, amount1);
+            UniswapV3Pool.CallbackData memory extra = abi.decode(
+                data,
+                (UniswapV3Pool.CallbackData)
+            );
+            // token0.transfer(msg.sender, amount0);
+            // token1.transfer(msg.sender, amount1);
+            token0.transferFrom(extra.payer, msg.sender, amount0);
+            token1.transferFrom(extra.payer, msg.sender, amount1);
         }
     }
 }

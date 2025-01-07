@@ -3,8 +3,12 @@ pragma solidity ^0.8.20;
 import {Tick} from "./lib/Tick.sol";
 import {Position} from "./lib/Position.sol";
 import {IUniswapV3MintCallback} from "./interface/IUniswapV3MintCallback.sol";
+import {IUniswapV3SwapCallback} from "./interface/IUniswapV3SwapCallback.sol";
 import {IERC20} from "./interface/IERC20.sol";
 
+// spdx, pragma, import, interface, libraries, contracts
+// error, type declarations, state variables, events, modifer
+// Constructor, receive, fallback, external, public, internal, private, view and pure functions
 contract UniswapV3Pool {
     using Tick for mapping(int24 => Tick.Info);
     using Position for mapping(bytes32 => Position.Info);
@@ -17,13 +21,9 @@ contract UniswapV3Pool {
     error ZeroLiquidity();
     error InsufficientInputAmount();
 
-    int24 internal constant MIN_TICK = -887272;
-    int24 internal constant MAX_TICK = -MIN_TICK;
-
-    // Pool tokens, immutable
-    address public immutable token0;
-    address public immutable token1;
-
+    /*//////////////////////////////////////////////////////////////
+                          type declarations
+    //////////////////////////////////////////////////////////////*/
     // Packing variables that are read together, and save gas
     struct Slot0 {
         // current price
@@ -31,6 +31,20 @@ contract UniswapV3Pool {
         // current tick
         int24 tick;
     }
+    struct CallbackData {
+        address token0;
+        address token1;
+        address payer;
+    }
+    /*//////////////////////////////////////////////////////////////
+                           state variables
+    //////////////////////////////////////////////////////////////*/
+    int24 internal constant MIN_TICK = -887272;
+    int24 internal constant MAX_TICK = -MIN_TICK;
+
+    // Pool tokens, immutable
+    address public immutable token0;
+    address public immutable token1;
 
     Slot0 public slot0;
 
@@ -54,6 +68,15 @@ contract UniswapV3Pool {
         uint256 amount0,
         uint256 amount1
     );
+    event Swap(
+        address sender,
+        address indexed recipient,
+        int256 indexed amount0,
+        int256 indexed amount1,
+        uint160 sqrtPriceX96,
+        uint128 liquidity,
+        int24 tick
+    );
 
     constructor(
         address _token0,
@@ -70,7 +93,8 @@ contract UniswapV3Pool {
         address owner,
         int24 lowerTick,
         int24 upperTick,
-        uint128 amount
+        uint128 amount,
+        bytes calldata data
     ) external returns (uint256 amount0, uint256 amount1) {
         if (
             lowerTick >= upperTick ||
@@ -98,7 +122,8 @@ contract UniswapV3Pool {
         }
         IUniswapV3MintCallback(msg.sender).uniswapV3MintCallback(
             amount0,
-            amount1
+            amount1,
+            data
         );
         if (amount0 > 0 && balance0Before + amount0 > balance0()) {
             revert InsufficientInputAmount();
@@ -128,6 +153,43 @@ contract UniswapV3Pool {
             amount,
             amount0,
             amount1
+        );
+    }
+
+    function swap(
+        address recipient,
+        bytes calldata data
+    ) public returns (int256 amount0, int256 amount1) {
+        // 计算交换后的价格，当前为写死状态，后续通过公式计算得出
+        int24 nextTick = 85184;
+        uint160 nextPrice = 5604469350942327889444743441197;
+
+        amount0 = -0.008396714242162444 ether;
+        amount1 = 42 ether;
+
+        // 更新slot的tick、sqrtPriceX96
+        (slot0.tick, slot0.sqrtPriceX96) = (nextTick, nextPrice);
+
+        IERC20(token0).transfer(recipient, uint256(-amount0));
+        uint256 balance1Before = balance1();
+        IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(
+            amount0,
+            amount1,
+            data
+        );
+
+        if (balance1Before + uint256(amount1) < balance1()) {
+            revert InsufficientInputAmount();
+        }
+
+        emit Swap(
+            msg.sender,
+            recipient,
+            amount0,
+            amount1,
+            nextPrice,
+            liquidity,
+            nextTick
         );
     }
 
