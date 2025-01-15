@@ -26,7 +26,7 @@ contract UniswapV3PoolTest is Test {
         token0 = new ERC20Mintable("Ether", "ETH", 18);
         token1 = new ERC20Mintable("USDC", "USDC", 18);
         token0.mint(address(this), 1 ether);
-        token1.mint(address(this), 5000 ether);
+        token1.mint(address(this), 5001 ether);
     }
 
     function testMintSuccess() public {
@@ -43,8 +43,8 @@ contract UniswapV3PoolTest is Test {
         });
 
         (uint256 poolBalance0, uint256 poolBalance1) = setUpTestCase(params);
-        uint256 expectedAmount0 = 0.998976618347425280 ether;
-        uint256 expectedAmount1 = 5000 ether;
+        uint256 expectedAmount0 = 0.998628802115141959 ether;
+        uint256 expectedAmount1 = 5000209190920489524100 wei;
 
         assertEq(
             poolBalance0,
@@ -95,6 +95,7 @@ contract UniswapV3PoolTest is Test {
 
     // TODO: 测试输入不足时的情况
     function SwapInsufficientInputAmount() public {
+        uint256 amountSpecified = 0.01 ether;
         // 添加流动性
         TestCaseParams memory params = TestCaseParams({
             wethBalance: 1 ether,
@@ -119,14 +120,15 @@ contract UniswapV3PoolTest is Test {
             payer: address(this)
         });
         vm.expectRevert(UniswapV3Pool.InsufficientInputAmount.selector);
-        pool.swap(address(this), abi.encode(data));
+        pool.swap(address(this), true, amountSpecified, abi.encode(data));
     }
 
     function testSwapBuyETH() public {
+        uint256 amountSpecified = 42 ether;
         // 添加流动性
         TestCaseParams memory params = TestCaseParams({
             wethBalance: 1 ether,
-            usdcBalance: 5000 ether,
+            usdcBalance: 5001 ether,
             currentTick: 85176,
             lowerTick: 84222,
             upperTick: 86129,
@@ -153,10 +155,12 @@ contract UniswapV3PoolTest is Test {
         // 转入 42 usdc,收到 ETH
         (int256 amount0Delta, int256 amount1Delta) = pool.swap(
             address(this),
+            false,
+            amountSpecified,
             abi.encode(data)
         );
         console.log(uint256(amount0Delta));
-        assertEq(amount0Delta, -0.008396714242162444 ether, "invalid ETH out");
+        assertEq(amount0Delta, -0.008396714242162445 ether, "invalid ETH out");
         assertEq(amount1Delta, 42 ether, "invalid USDC in");
         // FIXME:错误的写法 ✅
         // 在solidity中将一个负数强制转为uint256时,solidity会直接将其二进制补码解释为一个无符号整数
@@ -177,7 +181,12 @@ contract UniswapV3PoolTest is Test {
             token0.balanceOf(address(this)),
             "invalid token0 balance"
         );
-        assertEq(0, token1.balanceOf(address(this)), "invalid token1 balance");
+
+        assertEq(
+            790809079510475900,
+            token1.balanceOf(address(this)),
+            "invalid token1 balance"
+        );
 
         // 验证Pool
         assertEq(
@@ -206,7 +215,7 @@ contract UniswapV3PoolTest is Test {
     ) internal returns (uint256 poolBalance0, uint256 poolBalance1) {
         // 授权给自己,因为uniswapV3MintCallback方法
         token0.approve(address(this), 1 ether);
-        token1.approve(address(this), 5000 ether);
+        token1.approve(address(this), 5001 ether);
         pool = new UniswapV3Pool(
             address(token0),
             address(token1),

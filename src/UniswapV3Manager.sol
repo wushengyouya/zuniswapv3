@@ -20,8 +20,18 @@ contract UniswapV3Manager {
         );
     }
 
-    function swap(address _poolAddress, bytes calldata data) public {
-        UniswapV3Pool(_poolAddress).swap(msg.sender, data);
+    function swap(
+        address _poolAddress,
+        bool zeroForOne,
+        uint256 amountSpecified,
+        bytes calldata data
+    ) public {
+        UniswapV3Pool(_poolAddress).swap(
+            msg.sender,
+            zeroForOne,
+            amountSpecified,
+            data
+        );
     }
 
     function uniswapV3MintCallback(
