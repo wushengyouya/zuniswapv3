@@ -24,11 +24,14 @@ library SwapMath {
             zeroForOne
         );
 
+        // 根据交换后的价格计算出amountIn
         amountIn = Math.calcAmount0Delta(
             sqrtPriceCurrentX96,
             sqrtPriceNextX96,
             liquidity
         );
+
+        // 根据交换后的价格计算出amountOut
         amountOut = Math.calcAmount1Delta(
             sqrtPriceCurrentX96,
             sqrtPriceNextX96,

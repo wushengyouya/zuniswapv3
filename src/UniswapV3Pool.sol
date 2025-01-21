@@ -168,11 +168,13 @@ contract UniswapV3Pool {
             lowerTick,
             upperTick
         );
+        // 更新流动性
         posInfo.update(amount);
 
         bool flippedLower = ticks.update(lowerTick, amount);
         bool flippedUpper = ticks.update(upperTick, amount);
 
+        // 标记BitMap
         if (flippedLower) {
             tickBitmap.flipTick(lowerTick, TICK_SPACING);
         }

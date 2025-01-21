@@ -6,6 +6,7 @@ import "./PRBMath.sol";
 library Math {
     // src/lib/Math.sol
     // token x
+    // (L * (sqrtUpper-sqrtLower)) /sqrtUpper * sqrtLower
     function calcAmount0Delta(
         uint160 sqrtPriceAX96,
         uint160 sqrtPriceBX96,
@@ -38,6 +39,7 @@ library Math {
         }
     }
 
+    // L (sqrtUpper - sqrtLower)
     // token y
     function calcAmount1Delta(
         uint160 sqrtPriceAX96,
@@ -67,6 +69,13 @@ library Math {
         }
     }
 
+    /**
+     * sqrtPrice + (amountIn / L)
+     * sqrtPriceX96 + (amountIn * 2^96 / liquidity)
+     * @param sqrtPriceX96 当前价格
+     * @param liquidity 流动性
+     * @param amountIn 传入的token数量
+     */
     function getNextSqrtPriceFromAmount1RoundingDown(
         uint160 sqrtPriceX96,
         uint128 liquidity,
@@ -79,6 +88,13 @@ library Math {
             uint160((amountIn << FixedPoint96.RESOLUTION) / liquidity);
     }
 
+    /**
+     * L * sqrtPrice / L + amountIn * sqrtPrice
+     * (liquidity * 2^96 * sqrtPriceX96) / (liquidity * 2^96 + amountIn * sqrtPriceX96)
+     * @param sqrtPriceX96 价格
+     * @param liquidity 流动性
+     * @param amountIn 传入的amount
+     */
     function getNextSqrtPriceFromAmount0RoundingUp(
         uint160 sqrtPriceX96,
         uint128 liquidity,
